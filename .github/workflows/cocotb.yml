@@ -21,3 +21,7 @@ jobs:
 
     - name: Run test
       run: make -C /var/www/test/
+
+    - name: Test summary
+      if: always()
+      run: python3 /var/www/test/summary.py >> "$GITHUB_STEP_SUMMARY"
