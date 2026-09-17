@@ -1,0 +1,23 @@
+name: Cocotb
+
+on:
+  workflow_dispatch: {}
+  push:
+    paths:
+      - .github/workflows/cocotb.yml
+      - src/**
+      - test/**
+
+jobs:
+  quartus:
+    name: Cocotb test
+    runs-on: ubuntu-latest
+    container:
+      image: rafaelcorsi/pl-descomp-cocotb:latest
+      options: -v ${{ github.workspace }}:/var/www
+    steps:
+    - name: Check out the repo
+      uses: actions/checkout@v3
+
+    - name: Run test
+      run: make -C /var/www/test/
