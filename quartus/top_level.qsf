@@ -1,12 +1,25 @@
 set_global_assignment -name FAMILY "Cyclone V"
 set_global_assignment -name DEVICE 5CEBA4F23C7
-set_global_assignment -name TOP_LEVEL_ENTITY "TOP_LEVEL"
+set_global_assignment -name TOP_LEVEL_ENTITY toplevel_mips
 set_global_assignment -name ORIGINAL_QUARTUS_VERSION 13
 set_global_assignment -name LAST_QUARTUS_VERSION 14.0
 set_global_assignment -name PROJECT_CREATION_TIME_DATE "MON MAY  5 11:54:18 2014"
 set_global_assignment -name VHDL_INPUT_VERSION VHDL_2008
 
 set_global_assignment -name VHDL_FILE ../src/TOP_LEVEL.vhd
+set_global_assignment -name VHDL_FILE ../src/ula_fullAdder.vhd
+set_global_assignment -name VHDL_FILE ../src/ula_logicUnit.vhd
+set_global_assignment -name VHDL_FILE ../src/ula_1bit.vhd
+set_global_assignment -name VHDL_FILE ../src/ula_32bits.vhd
+set_global_assignment -name VHDL_FILE ../src/ula_flags.vhd
+set_global_assignment -name VHDL_FILE ../src/ula.vhd
+set_global_assignment -name VHDL_FILE ../src/reg_file.vhd
+set_global_assignment -name VHDL_FILE ../src/sign_extender.vhd
+set_global_assignment -name VHDL_FILE ../src/zero_extender.vhd
+set_global_assignment -name VHDL_FILE ../src/arith_machine.vhd
+set_global_assignment -name VHDL_FILE ../src/hex7seg.vhd
+set_global_assignment -name VHDL_FILE ../src/toplevel_ula.vhd
+set_global_assignment -name VHDL_FILE ../src/toplevel_mips.vhd
 
 #============================================================
 # CLOCK2
