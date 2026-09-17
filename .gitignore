@@ -45,3 +45,11 @@ quartus/incremental_db/
 quartus/db/
 quartus/_output_files/
 quartus/PLLJ_PLLSPE_INFO.txt
+
+# cocotb / ghdl
+test/sim_build*/
+test/results*.xml
+test/__pycache__/
+*.vcd
+*.ghw
+*.cf
