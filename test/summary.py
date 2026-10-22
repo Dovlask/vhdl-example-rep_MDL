@@ -6,7 +6,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 here = os.path.dirname(os.path.abspath(__file__))
-ORDER = ["ula", "reg_file", "arith_machine", "demux"]
+ORDER = ["ula", "reg_file", "arith_machine", "demux", "mips_rom", "mips_ram",
+         "control_unit", "nextPC", "mips_word_toplevel"]
 
 
 def key(path):
