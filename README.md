@@ -18,9 +18,29 @@ Projeto Quartus (DE0-CV, Cyclone V `5CEBA4F23C7`) + testes cocotb/GHDL.
 | `src/toplevel_ula.vhd` | toplevel para validar a ULA na placa (APS-1-1) |
 | `src/toplevel_mips.vhd` | toplevel para validar a máquina aritmética na placa (APS-1-3) |
 | `src/hex7seg.vhd` | decodificador hex → 7 segmentos |
-| `test/` | testes cocotb (`test_ula.py`, `test_reg_file.py`, `test_arith_machine.py`) |
+| `src/mips_rom.vhd` | memória de programa (ROM 1024 x 32, template da APS-1-4) |
+| `src/mips_ram.vhd` | memória de dados (RAM 1024 x 32, só `word_we`, template da APS-1-4) |
+| `src/pc_register.vhd` | registrador do PC (reset → `0x00000000`) |
+| `src/nextPC.vhd` | próximo PC: `PC+4` / branch / `j` / `jr` (`control_type`) |
+| `src/shift_left2.vhd` | `BranchAddr = SignExtImm << 2` |
+| `src/control_unit.vhd` | **unidade de controle** (decoder): R, I, lw/sw, beq/bne, j, jr |
+| `src/mips_word_toplevel.vhd` | **MIPS completo** (versão word, APS-1-4) |
+| `test/` | testes cocotb (ULA, reg_file, máquina aritmética, ROM, RAM, decoder, nextPC e MIPS completo) |
+| `test/mips_rom_programa.vhd` | ROM **só para teste** do MIPS completo (gerada por `test/gen_rom_programa.py`) |
 
 Controle da ULA: `010` soma, `011` subtração, `100` AND, `101` OR, `110` NOR, `111` XOR.
+
+### MIPS (`mips_word_toplevel`)
+
+Monociclo, segue o diagrama da APS-1-4: `pc_register` → `mips_rom` (endereço `PC[11:2]`) →
+`control_unit` + `reg_file` + extensores → mux `alu_src2` → `ULA` → `mips_ram` → mux `mem_read` → `W_data`.
+`nextPC` escolhe o próximo PC pelo `control_type` (`00` PC+4, `01` branch, `10` j, `11` jr).
+
+Instruções suportadas: `add addu sub subu and or xor nor jr addi addiu andi ori xori lw sw beq bne j`.
+Qualquer outra levanta `except` e não escreve nada (`lui`/`slt` ainda não têm mux no caminho de dados).
+
+O teste `test_mips_word_toplevel.py` roda um programa (aritmética, `lw`/`sw`, branches, `j`, `jr`, laço)
+e compara PC, instrução e saída da ULA ciclo a ciclo com o modelo em `test/mips_model.py`.
 
 ## Testes (cocotb)
 
@@ -29,6 +49,8 @@ docker run -it --rm -v $(pwd):/job rafaelcorsi/pl-descomp-cocotb:latest
 make -C test/                  # todos os testes
 make -C test/ DUT=ula          # só a ULA
 make -C test/ DUT=reg_file     # só o banco de registradores
+make -C test/ DUT=mips_rom     # ROM   (também: mips_ram, control_unit, nextPC)
+make -C test/ DUT=mips_word_toplevel   # MIPS completo
 ```
 
 O GitHub Actions roda os testes (`.github/workflows/cocotb.yml`) e a compilação do Quartus (`.github/workflows/quartus_tests.yml`) a cada push.
@@ -36,7 +58,7 @@ O GitHub Actions roda os testes (`.github/workflows/cocotb.yml`) e a compilaçã
 ## Validação na placa
 
 O projeto está com `toplevel_mips` como top-level. Para a ULA, no Quartus: botão direito em `toplevel_ula` → *Set as Top-Level Entity*.
-Para gerar o RTL pedido nas entregas: *Set as Top-Level Entity* no componente (`ULA`, `reg_file` ou `arith_machine`) → *Analysis & Elaboration* → *Tools > Netlist Viewers > RTL Viewer*.
+Para gerar o RTL pedido nas entregas: *Set as Top-Level Entity* no componente (`ULA`, `reg_file`, `arith_machine` ou `mips_word_toplevel`) → *Analysis & Elaboration* → *Tools > Netlist Viewers > RTL Viewer*.
 
 ### `toplevel_mips` (máquina aritmética)
 
