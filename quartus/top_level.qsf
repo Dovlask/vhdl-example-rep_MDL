@@ -20,6 +20,13 @@ set_global_assignment -name VHDL_FILE ../src/arith_machine.vhd
 set_global_assignment -name VHDL_FILE ../src/hex7seg.vhd
 set_global_assignment -name VHDL_FILE ../src/toplevel_ula.vhd
 set_global_assignment -name VHDL_FILE ../src/toplevel_mips.vhd
+set_global_assignment -name VHDL_FILE ../src/mips_rom.vhd
+set_global_assignment -name VHDL_FILE ../src/mips_ram.vhd
+set_global_assignment -name VHDL_FILE ../src/pc_register.vhd
+set_global_assignment -name VHDL_FILE ../src/nextPC.vhd
+set_global_assignment -name VHDL_FILE ../src/shift_left2.vhd
+set_global_assignment -name VHDL_FILE ../src/control_unit.vhd
+set_global_assignment -name VHDL_FILE ../src/mips_word_toplevel.vhd
 
 #============================================================
 # CLOCK2
