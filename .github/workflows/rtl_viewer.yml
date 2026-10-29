@@ -1,0 +1,113 @@
+name: RTL Viewer (Quartus)
+
+# Abre o Quartus (GUI) num display virtual (Xvfb), abre o RTL Viewer do
+# mips_word_toplevel e salva prints em rtl_shots/. So roda na branch rtl-quartus.
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [rtl-quartus]
+    paths:
+      - .github/workflows/rtl_viewer.yml
+
+permissions:
+  contents: write
+
+jobs:
+  rtl:
+    name: Quartus RTL Viewer
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: gianvr/pfe:latest
+    steps:
+    - name: Install X tools
+      run: |
+        cat /etc/os-release || true
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get update -qq || true
+        for p in git xvfb xdotool imagemagick fluxbox x11-utils wmctrl \
+                 libxext6 libxrender1 libxtst6 libxi6 libsm6 libice6 libfontconfig1 libfreetype6 \
+                 libglib2.0-0 libxft2 libdbus-1-3 libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
+                 libxcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+                 libxcb-render-util0 libxcb-shape0 libxcb-xkb1 libxcb-xfixes0 libxcb-sync1 \
+                 libncurses5 fonts-dejavu-core; do
+          apt-get install -y -qq --no-install-recommends "$p" >/dev/null 2>&1 && echo "ok   $p" || echo "FAIL $p"
+        done
+
+    - name: Check out the repo
+      uses: actions/checkout@v3
+
+    - name: Analysis & Elaboration (top = mips_word_toplevel)
+      working-directory: quartus
+      run: |
+        QBIN=$(dirname "$(command -v quartus_map)"); echo "QBIN=$QBIN"; ls "$QBIN"
+        quartus_sh --version || true
+        sed -i -E 's/(TOP_LEVEL_ENTITY[[:space:]]+)[A-Za-z0-9_]+/\1mips_word_toplevel/' top_level.qsf
+        grep TOP_LEVEL top_level.qsf
+        quartus_map top_level --analysis_and_elaboration
+        quartus_npp top_level --netlist_type=sgate || true
+
+    - name: Quartus GUI + RTL Viewer
+      working-directory: quartus
+      run: |
+        OUT=$GITHUB_WORKSPACE/rtl_shots/run$GITHUB_RUN_NUMBER
+        mkdir -p $OUT
+        export DISPLAY=:99
+        Xvfb :99 -screen 0 3200x1800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+        sleep 3
+        fluxbox >/tmp/fluxbox.log 2>&1 &
+        sleep 3
+        shot() { import -window root "$OUT/$1.png" && echo "shot $1"; }
+        wins() {
+          echo "== $1" >> $OUT/janelas.txt
+          for w in $(xdotool search --onlyvisible --name . 2>/dev/null); do
+            echo "$w | $(xdotool getwindowname $w) | $(xdotool getwindowgeometry $w | tr '\n' ' ')" >> $OUT/janelas.txt
+          done
+        }
+
+        quartus top_level.qpf >/tmp/quartus_gui.log 2>&1 &
+        QPID=$!
+        for t in 15 30 30 30; do sleep $t; shot "a_inicio_$SECONDS"; done
+        wins "depois de abrir"
+
+        # janela principal do Quartus: maximiza e tenta Tools > Netlist Viewers > RTL Viewer
+        W=$(xdotool search --onlyvisible --name "Quartus Prime" | head -1)
+        echo "janela principal: $W"
+        if [ -n "$W" ]; then
+          wmctrl -i -r $W -b add,maximized_vert,maximized_horz || true
+          sleep 3
+          xdotool windowactivate --sync $W || true
+          sleep 2; shot b_main
+          xdotool key --window $W alt+t; sleep 3; shot c_tools_menu
+          xdotool key n; sleep 3; shot d_netlist_menu
+          xdotool key r; sleep 60; shot e_depois_r
+          wins "depois de alt+t n r"
+        fi
+
+        R=$(xdotool search --onlyvisible --name "RTL Viewer" | tail -1)
+        echo "janela RTL: $R"
+        if [ -n "$R" ]; then
+          wmctrl -i -r $R -b add,maximized_vert,maximized_horz || true
+          sleep 5
+          xdotool windowactivate --sync $R || true
+          sleep 5
+          shot f_rtl_tela
+          import -window $R "$OUT/g_rtl_janela.png" || true
+        fi
+        cp /tmp/quartus_gui.log $OUT/ || true
+        tail -40 /tmp/quartus_gui.log || true
+        kill $QPID || true
+
+    - name: Commit dos prints na branch rtl-quartus
+      if: always()
+      run: |
+        git config --global --add safe.directory '*'
+        cd $GITHUB_WORKSPACE
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git checkout -- quartus || true
+        git add rtl_shots
+        git commit -m "prints do RTL Viewer (run $GITHUB_RUN_NUMBER)" || exit 0
+        git pull --rebase origin rtl-quartus || true
+        git push origin HEAD:rtl-quartus
