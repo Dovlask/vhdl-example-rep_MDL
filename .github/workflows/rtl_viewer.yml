@@ -2,6 +2,7 @@ name: RTL Viewer (Quartus)
 
 # Abre o Quartus (GUI) num display virtual (Xvfb), abre o RTL Viewer do
 # mips_word_toplevel e salva prints em rtl_shots/. So roda na branch rtl-quartus.
+# O X (Xvfb) e os prints rodam no runner; o Quartus roda no container gianvr/pfe.
 
 on:
   workflow_dispatch: {}
@@ -18,47 +19,42 @@ jobs:
     name: Quartus RTL Viewer
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    container:
-      image: gianvr/pfe:latest
+    env:
+      IMG: gianvr/pfe:latest
     steps:
-    - name: Install X tools
-      run: |
-        cat /etc/os-release || true
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq || true
-        for p in git xvfb xdotool imagemagick fluxbox x11-utils wmctrl \
-                 libxext6 libxrender1 libxtst6 libxi6 libsm6 libice6 libfontconfig1 libfreetype6 \
-                 libglib2.0-0 libxft2 libdbus-1-3 libgl1 libegl1 libxkbcommon0 libxkbcommon-x11-0 \
-                 libxcb1 libxcb-xinerama0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-                 libxcb-render-util0 libxcb-shape0 libxcb-xkb1 libxcb-xfixes0 libxcb-sync1 \
-                 libncurses5 fonts-dejavu-core; do
-          apt-get install -y -qq --no-install-recommends "$p" >/dev/null 2>&1 && echo "ok   $p" || echo "FAIL $p"
-        done
-
     - name: Check out the repo
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
+
+    - name: Install X tools (runner)
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq xvfb xdotool imagemagick fluxbox wmctrl x11-utils >/dev/null
+        which Xvfb xdotool import fluxbox wmctrl
+
+    - name: Pull Quartus image
+      run: docker pull -q $IMG
+
+    - name: Libs que faltam no container (diagnostico)
+      run: |
+        docker run --rm $IMG bash -c 'ls /opt/intelFPGA/quartus/linux64 | grep -i -E "^quartus$|^qnui|^libnlv|nuiq" ; for f in /opt/intelFPGA/quartus/linux64/quartus /opt/intelFPGA/quartus/linux64/*.so; do ldd "$f" 2>/dev/null | grep "not found"; done | sort | uniq -c | sort -rn | head -40' || true
 
     - name: Analysis & Elaboration (top = mips_word_toplevel)
-      working-directory: quartus
       run: |
-        QBIN=$(dirname "$(command -v quartus_map)"); echo "QBIN=$QBIN"; ls "$QBIN"
-        quartus_sh --version || true
-        sed -i -E 's/(TOP_LEVEL_ENTITY[[:space:]]+)[A-Za-z0-9_]+/\1mips_word_toplevel/' top_level.qsf
-        grep TOP_LEVEL top_level.qsf
-        quartus_map top_level --analysis_and_elaboration
-        quartus_npp top_level --netlist_type=sgate || true
+        sed -i -E 's/(TOP_LEVEL_ENTITY[[:space:]]+)[A-Za-z0-9_]+/\1mips_word_toplevel/' quartus/top_level.qsf
+        grep TOP_LEVEL quartus/top_level.qsf
+        docker run --rm -v "$PWD":/var/www -w /var/www/quartus $IMG bash -c \
+          "quartus_map top_level --analysis_and_elaboration && quartus_npp top_level --netlist_type=sgate"
 
     - name: Quartus GUI + RTL Viewer
-      working-directory: quartus
       run: |
         OUT=$GITHUB_WORKSPACE/rtl_shots/run$GITHUB_RUN_NUMBER
         mkdir -p $OUT
         export DISPLAY=:99
-        Xvfb :99 -screen 0 3200x1800x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+        Xvfb :99 -screen 0 3200x1800x24 -ac >/tmp/xvfb.log 2>&1 &
         sleep 3
         fluxbox >/tmp/fluxbox.log 2>&1 &
         sleep 3
-        shot() { import -window root "$OUT/$1.png" && echo "shot $1"; }
+        shot() { import -display :99 -window root "$OUT/$1.png" && echo "shot $1"; }
         wins() {
           echo "== $1" >> $OUT/janelas.txt
           for w in $(xdotool search --onlyvisible --name . 2>/dev/null); do
@@ -66,10 +62,12 @@ jobs:
           done
         }
 
-        quartus top_level.qpf >/tmp/quartus_gui.log 2>&1 &
-        QPID=$!
-        for t in 15 30 30 30; do sleep $t; shot "a_inicio_$SECONDS"; done
+        docker run -d --name q --ipc=host -e DISPLAY=:99 -e QT_X11_NO_MITSHM=1 \
+          -v /tmp/.X11-unix:/tmp/.X11-unix -v "$PWD":/var/www -w /var/www/quartus $IMG \
+          bash -c "quartus top_level.qpf > /var/www/rtl_shots/quartus_gui.log 2>&1"
+        for t in 20 25 25 30; do sleep $t; shot "a_inicio_${SECONDS}s"; done
         wins "depois de abrir"
+        docker ps -a
 
         # janela principal do Quartus: maximiza e tenta Tools > Netlist Viewers > RTL Viewer
         W=$(xdotool search --onlyvisible --name "Quartus Prime" | head -1)
@@ -79,7 +77,7 @@ jobs:
           sleep 3
           xdotool windowactivate --sync $W || true
           sleep 2; shot b_main
-          xdotool key --window $W alt+t; sleep 3; shot c_tools_menu
+          xdotool key alt+t; sleep 3; shot c_tools_menu
           xdotool key n; sleep 3; shot d_netlist_menu
           xdotool key r; sleep 60; shot e_depois_r
           wins "depois de alt+t n r"
@@ -93,21 +91,20 @@ jobs:
           xdotool windowactivate --sync $R || true
           sleep 5
           shot f_rtl_tela
-          import -window $R "$OUT/g_rtl_janela.png" || true
+          import -display :99 -window $R "$OUT/g_rtl_janela.png" || true
         fi
-        cp /tmp/quartus_gui.log $OUT/ || true
-        tail -40 /tmp/quartus_gui.log || true
-        kill $QPID || true
+        cat $OUT/janelas.txt || true
+        tail -40 rtl_shots/quartus_gui.log || true
+        docker rm -f q || true
 
     - name: Commit dos prints na branch rtl-quartus
       if: always()
       run: |
-        git config --global --add safe.directory '*'
-        cd $GITHUB_WORKSPACE
+        sudo chown -R "$(id -u):$(id -g)" . || true
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git checkout -- quartus || true
+        git checkout -- quartus/top_level.qsf || true
         git add rtl_shots
-        git commit -m "prints do RTL Viewer (run $GITHUB_RUN_NUMBER)" || exit 0
-        git pull --rebase origin rtl-quartus || true
+        git commit -q -m "prints do RTL Viewer (run $GITHUB_RUN_NUMBER)" || exit 0
+        git pull -q --rebase origin rtl-quartus || true
         git push origin HEAD:rtl-quartus
